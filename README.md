@@ -4,7 +4,7 @@
 
 This repository aims at predicting temperature and classify a plant's type and stage base on other available metrics. Despite the data having only weak individual correlations with temperature (the highest being around 0.2), the model still achieved a convincing R² of 0.51 — accounting for about half of the temperature variance and also classifies the plant type stage. 
 
-> **Note:** I was actually able to create a satisfactory plant model predictor despite the time constraints and lack of previous knowledge on data cleaning and EDA(literally self taught myself in the 5 days the assignment was given with like a heck ton of other commitments) as I did end up getting the internship:D
+> **Note:** I was actually able to create a satisfactory plant model predictor despite the time constraints and lack of previous knowledge on data cleaning and EDA (literally self taught myself in the 5 days the assignment was given with like a heck ton of other commitments) as I did end up getting the internship:D
 ---
 
 ## Repository Overview
@@ -13,14 +13,18 @@ This repository contains the solution for a Temperature Predicting and a Plant T
 Take a look at the eda.ipynb to see how the data is processed and look at instructions below for how to execute the machine learning models
 The repository structure is as follows:
  
-| data  
-|   └── agri.db                 
-| src  
-|   └── main.py                  
-| eda.ipynb                 
-| run.sh                    
-| requirements.txt           
-| README.md                   
+```
+project-root/
+├── data/
+│   └── agri.db                # SQLite database containing farm sensor data
+├── src/
+│   └── main.py                # Core implementation of ML pipeline
+├── eda.ipynb                  # Exploratory Data Analysis notebook
+├── eda.ipynb(unrun)           # Exploratory Data Analysis notebook without displaying the results
+├── run.sh                     # Shell script to execute the pipeline
+├── requirements.txt           # Python dependencies
+└── README.md                  # Project documentation          
+```
 
 ---
 
@@ -31,7 +35,7 @@ The repository structure is as follows:
    git clone https://github.com/GrassHeadd/aiip5-hu-junjie-624H
 2. **Running the pipelining**
    ```bash
-   pip install requirements.txt
+   pip install -r requirements.txt
    ```
    ```bash
    ./run.sh

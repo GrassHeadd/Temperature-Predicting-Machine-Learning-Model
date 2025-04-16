@@ -11,6 +11,27 @@ from sklearn.compose import ColumnTransformer
 
 import xgboost as xgb
 
+"""
+Temperature Prediction and Plant Type-Stage Classification Pipeline
+
+This module implements the complete ML pipeline for:
+1. Temperature prediction using XGBoost regression
+2. Plant Type-Stage classification using XGBoost classification
+
+The pipeline handles:
+- Data loading from SQLite database
+- Data cleaning and preprocessing (text standardization, numeric conversion)
+- Missing value imputation (KNN for correlated features, median for others)
+- Feature engineering (polynomial features, categorical encoding)
+- Model training with hyperparameter tuning via GridSearchCV
+- Model evaluation and performance reporting
+
+Author: Grasshead
+Date: March 2025
+"""
+
+# Import statements...
+
 ###############################################################################
 # Function to Process Outlier
 ###############################################################################
@@ -22,9 +43,30 @@ def cap_outliers(df, columns, lower_q=0.01, upper_q=0.99):
     return df
 
 ###############################################################################
-# Load Data
+# 1. Load Data
 ###############################################################################
+
 def load_data(db_path='data/agri.db'):
+    """
+    Load agricultural data from SQLite database.
+    
+    Parameters
+    ----------
+    db_path : str
+        Path to the SQLite database file
+        
+    Returns
+    -------
+    pandas.DataFrame
+        Dataframe containing farm sensor data
+        
+    Raises
+    ------
+    FileNotFoundError
+        If the database file doesn't exist
+    sqlite3.Error
+        If there's an issue with the database connection
+    """
     conn = sqlite3.connect(db_path)
     df = pd.read_sql_query("SELECT * FROM farm_data", conn)
     conn.close()
@@ -34,6 +76,22 @@ def load_data(db_path='data/agri.db'):
 # 2. Clean Data
 ###############################################################################
 def clean_data(df):
+    """
+    Clean and preprocess the raw sensor data.
+    
+    Performs text standardization, numeric conversions, temperature correction,
+    and duplicate removal.
+    
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Raw data from database
+        
+    Returns
+    -------
+    pandas.DataFrame
+        Cleaned and preprocessed dataframe ready for feature engineering
+    """
     # 2.1 Text standardization
     df['Plant Type'] = df['Plant Type'].str.lower().str.strip()
     df['Previous Cycle Plant Type'] = df['Previous Cycle Plant Type'].str.lower().str.strip()
@@ -49,13 +107,13 @@ def clean_data(df):
         df[col] = df[col].replace({' ppm': '', 'None': ''}, regex=True)
         df[col] = pd.to_numeric(df[col], errors='coerce')
         
-    # Convert negative temperature to absolute
+    # 2.3 Convert negative temperature to absolute
     df['Temperature Sensor (°C)'] = df['Temperature Sensor (°C)'].abs()
     
     # Remove duplicates
     df.drop_duplicates(keep='first', inplace=True)
 
-    # KNN-impute columns (based on EDA correlation analysis)
+    # 2.4.1 KNN-impute columns (based on EDA correlation analysis)
     knn_cols = [
         'Temperature Sensor (°C)',
         'Humidity Sensor (%)',
@@ -63,7 +121,7 @@ def clean_data(df):
         'Nutrient K Sensor (ppm)'
     ]
     
-    # Simple median impute columns
+    # 2.4.2 Simple median impute columns
     simple_cols = [
         'Nutrient N Sensor (ppm)',
         'Nutrient P Sensor (ppm)',
@@ -92,7 +150,7 @@ def clean_data(df):
     )
     df[simple_cols] = df_simple_imputed[simple_cols]
 
-    # Outlier capping (reduces the influence of extreme sensor readings)
+    # 2.5 Outlier capping (reduces the influence of extreme sensor readings)
     columns_to_cap = [
         'Temperature Sensor (°C)',
         'Humidity Sensor (%)',
@@ -107,7 +165,7 @@ def clean_data(df):
     return df
 
 ###############################################################################
-# Polynomial Features Pipeline
+# 3. Polynomial Features Function
 ###############################################################################
 def add_polynomial_features_pipeline(df, columns, degree=2):
     df_sub = df[columns].copy()
@@ -125,10 +183,10 @@ def add_polynomial_features_pipeline(df, columns, degree=2):
     return df_final
 
 ###############################################################################
-# Train Regression (Temperature) - XGBoost
+# 4. Train Regression (Temperature) - XGBoost
 ###############################################################################
 def train_regression_xgb(df):
-    # Define numeric and categorical feature columns
+    # 4.1 Define numeric and categorical feature columns
     numeric_cols = [
         'Humidity Sensor (%)',
         'Light Intensity Sensor (lux)',
@@ -141,24 +199,24 @@ def train_regression_xgb(df):
     
     target_col = 'Temperature Sensor (°C)'
 
-    # Drop rows with missing target values
+    # 4.2 Drop rows with missing target values
     df = df.dropna(subset=[target_col])
     
     # Split features and target
     X = df[numeric_cols + categorical_cols].copy()
     y = df[target_col].copy()
 
-    # Split data into training and testing sets
+    # 4.3 Split data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
-    # Baseline predictor: mean of y_train (EDA suggests temperature distribution ~ 20°C)
+    # 4.4 Baseline predictor: mean of y_train (EDA suggests temperature distribution ~ 20°C)
     baseline_preds = np.full_like(y_test, fill_value=y_train.mean())
     baseline_rmse = np.sqrt(mean_squared_error(y_test, baseline_preds))
     print(f"[Baseline] RMSE (mean predictor): {baseline_rmse:.2f}")
 
-    # Preprocessing: scale numeric features and one-hot encode categorical features
+    # 4.5 Preprocessing: scale numeric features and one-hot encode categorical features
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', StandardScaler(), numeric_cols),
@@ -166,13 +224,13 @@ def train_regression_xgb(df):
         ]
     )
 
-    # Build the pipeline with the preprocessor and XGBoost regressor
+    # 4.6 Build the pipeline with the preprocessor and XGBoost regressor
     pipe = Pipeline([
         ('preprocessor', preprocessor),
         ('xgb', xgb.XGBRegressor(random_state=42, tree_method='auto'))
     ])
 
-    # Define parameter grid for GridSearchCV
+    # 4.7 Define parameter grid for GridSearchCV
     param_grid = {
         'xgb__n_estimators': [100, 300],
         'xgb__max_depth': [3, 6],
@@ -196,7 +254,7 @@ def train_regression_xgb(df):
     print("[XGB Regression] Best Params:", grid_search.best_params_)
     print("[XGB Regression] Best CV MSE:", -grid_search.best_score_)
 
-    # Evaluate on test set
+    # 4.8 Evaluate on test set
     best_model = grid_search.best_estimator_
     y_pred = best_model.predict(X_test)
     
@@ -212,12 +270,12 @@ def train_regression_xgb(df):
     return best_model, grid_search
 
 ###############################################################################
-# Train Classification (Plant Type Stage) - XGBoost
+# 5. Train Classification (Plant Type Stage) - XGBoost
 ###############################################################################
 def train_classification_xgb(df):
     df['PlantTypeStage'] = df['Plant Type'] + '-' + df['Plant Stage']
     
-    # feature columns
+    # 5.1 feature columns
     numeric_cols = [
         'Humidity Sensor (%)',
         'Light Intensity Sensor (lux)',
@@ -232,18 +290,18 @@ def train_classification_xgb(df):
     
     target_col = 'PlantTypeStage'
     
-    # Drop rows with missing target values
+    # 5.2 Drop rows with missing target values
     df = df.dropna(subset=[target_col])
     
-    # Split features and target
+    # 5.3 Split features and target
     X = df[numeric_cols + categorical_cols].copy()
     y = df[target_col].copy()
     
-    # Encode the target variable
+    # 5.4 Encode the target variable
     label_encoder = LabelEncoder()
     y_encoded = label_encoder.fit_transform(y)
     
-    # Stratify by y_encoded to handle potential class imbalance
+    # 5.5 Stratify by y_encoded to handle potential class imbalance
     X_train, X_test, y_train, y_test = train_test_split(
         X, y_encoded,
         test_size=0.2,
@@ -251,7 +309,7 @@ def train_classification_xgb(df):
         stratify=y_encoded
     )
     
-    # Preprocessing pipeline
+    # 5.6 Preprocessing pipeline
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', StandardScaler(), numeric_cols),
@@ -259,7 +317,7 @@ def train_classification_xgb(df):
         ]
     )
     
-    # Build the pipeline with the preprocessor and XGBoost classifier
+    # 5.7 Build the pipeline with the preprocessor and XGBoost classifier
     pipe = Pipeline([
         ('preprocessor', preprocessor),
         ('xgb_clf', xgb.XGBClassifier(
@@ -269,7 +327,7 @@ def train_classification_xgb(df):
         ))
     ])
     
-    # Define the parameter grid for GridSearchCV
+    # 5.8 Define the parameter grid for GridSearchCV
     param_grid = {
         'xgb_clf__n_estimators': [100, 200],
         'xgb_clf__max_depth': [3, 6, 10],
@@ -302,7 +360,7 @@ def train_classification_xgb(df):
     print(f"Accuracy: {acc:.4f}")
     print(f"F1 Score (macro): {f1:.4f}")
     
-    # Print the detailed classification report using the original class names
+    # 5.9 Print the detailed classification report using the original class names
     classes_ = label_encoder.inverse_transform(sorted(np.unique(y_encoded)))
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred, target_names=classes_))
@@ -320,7 +378,7 @@ def main():
     df_clean = clean_data(df_raw)
     print(f"After cleaning: {df_clean.shape[0]} rows, {df_clean.shape[1]} columns.")
 
-    # Add polynomial features (degree=2 or 3) if you wish:
+    # Add polynomial features of degree 2
     poly_cols = [
         'Humidity Sensor (%)',
         'Light Intensity Sensor (lux)',
